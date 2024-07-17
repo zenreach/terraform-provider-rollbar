@@ -299,14 +299,10 @@ func resourceNotificationCreate(ctx context.Context, d *schema.ResourceData, m i
 	l.Info().Msg("Creating rollbar_notification resource")
 
 	c := m.(map[string]*client.RollbarAPIClient)[projectKeyToken]
-<<<<<<< HEAD
 	if len(project_api_key) > 0 {
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
-=======
 	c.SetHeaderResource(rollbarNotification)
->>>>>>> upstream/master
-
 	n, err := c.CreateNotification(channel, filters, trigger, config, status)
 
 	if err != nil {
@@ -335,19 +331,12 @@ func resourceNotificationUpdate(ctx context.Context, d *schema.ResourceData, m i
 	l.Info().Msg("Creating rollbar_notification resource")
 
 	c := m.(map[string]*client.RollbarAPIClient)[projectKeyToken]
-<<<<<<< HEAD
 	if len(project_api_key) > 0 {
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
-
-	client.Mutex.Lock()
-	setResourceHeader(rollbarNotification, c)
-	n, err := c.UpdateNotification(id, channel, filters, trigger, config)
-	client.Mutex.Unlock()
-=======
+	
 	c.SetHeaderResource(rollbarNotification)
 	n, err := c.UpdateNotification(id, channel, filters, trigger, config, status)
->>>>>>> upstream/master
 
 	if err != nil {
 		l.Err(err).Send()
@@ -423,16 +412,10 @@ func resourceNotificationRead(ctx context.Context, d *schema.ResourceData, m int
 	l.Info().Msg("Reading rollbar_notification resource")
 
 	c := m.(map[string]*client.RollbarAPIClient)[projectKeyToken]
-<<<<<<< HEAD
 	if len(project_api_key) > 0 {
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
-
-	client.Mutex.Lock()
-	setResourceHeader(rollbarNotification, c)
-=======
 	c.SetHeaderResource(rollbarNotification)
->>>>>>> upstream/master
 	n, err := c.ReadNotification(id, channel)
 
 	if err == client.ErrNotFound {

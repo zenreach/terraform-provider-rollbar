@@ -74,13 +74,10 @@ func resourceServiceLinkCreate(ctx context.Context, d *schema.ResourceData, m in
 	l.Info().Msg("Creating rollbar_service_link resource")
 
 	c := m.(map[string]*client.RollbarAPIClient)[projectKeyToken]
-<<<<<<< HEAD
 	if len(project_api_key) > 0 {
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
-=======
 	c.SetHeaderResource(rollbarServiceLink)
->>>>>>> upstream/master
 
 	sl, err := c.CreateServiceLink(name, template)
 
@@ -109,16 +106,11 @@ func resourceServiceLinkUpdate(ctx context.Context, d *schema.ResourceData, m in
 	l.Info().Msg("Creating rollbar_service_link resource")
 
 	c := m.(map[string]*client.RollbarAPIClient)[projectKeyToken]
-<<<<<<< HEAD
 	if len(project_api_key) > 0 {
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
 
-	client.Mutex.Lock()
-	setResourceHeader(rollbarServiceLink, c)
-=======
 	c.SetHeaderResource(rollbarServiceLink)
->>>>>>> upstream/master
 	sl, err := c.UpdateServiceLink(id, name, template)
 
 	if err != nil {
@@ -147,13 +139,10 @@ func resourceServiceLinkRead(ctx context.Context, d *schema.ResourceData, m inte
 	l.Info().Msg("Reading rollbar_service_link resource")
 
 	c := m.(map[string]*client.RollbarAPIClient)[projectKeyToken]
-<<<<<<< HEAD
 	if len(project_api_key) > 0 {
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
-=======
 	c.SetHeaderResource(rollbarServiceLink)
->>>>>>> upstream/master
 
 	sl, err := c.ReadServiceLink(id)
 
