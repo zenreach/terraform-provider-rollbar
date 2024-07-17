@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-package rollbar
+package test2
 
 import (
 	"fmt"

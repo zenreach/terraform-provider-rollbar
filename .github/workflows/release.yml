@@ -7,6 +7,12 @@ jobs:
   release:
     name: Semantic Release
     runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+
     steps:
 
       - name: Checkout
@@ -45,6 +51,7 @@ jobs:
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@v4
         with:
+          version: 'v1.26.2'
           install-only: true
 
       - name: Install dependencies

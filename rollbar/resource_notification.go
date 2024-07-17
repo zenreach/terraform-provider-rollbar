@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Rollbar, Inc.
+ * Copyright (c) 2024 Rollbar, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -40,6 +40,11 @@ var configMap = map[string][]string{
 	"pagerduty": {"service_key"},
 	"webhook":   {"url", "format"},
 }
+
+const (
+	enabledStatus  = "enabled"
+	disabledStatus = "disabled"
+)
 
 var emailDailySummaryConfigList = []string{"summary_time", "environments", "send_only_if_data", "min_item_level"}
 
@@ -87,6 +92,12 @@ func resourceNotification() *schema.Resource {
 							Description: "Trigger",
 							Type:        schema.TypeString,
 							Required:    true,
+						},
+						"enabled": {
+							Description: "Enabled",
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Default:     true,
 						},
 						"filters": {
 							Description: "Filters",
@@ -233,16 +244,23 @@ func parseSet(setName string, d *schema.ResourceData) map[string]interface{} {
 	return map[string]interface{}{}
 }
 
-func parseRule(d *schema.ResourceData) (trigger string, filters interface{}) {
+func parseRule(d *schema.ResourceData) (trigger string, filters interface{}, status string) {
 	rule := parseSet("rule", d)
 	for key, value := range rule {
-		if key == "trigger" {
+		switch key {
+		case "trigger":
 			trigger = value.(string)
-		} else {
+		case "enabled":
+			v := value.(bool)
+			status = disabledStatus
+			if v {
+				status = enabledStatus
+			}
+		default:
 			filters = value
 		}
 	}
-	return trigger, filters
+	return trigger, filters, status
 }
 
 func cleanConfig(channel, trigger string, config map[string]interface{}) map[string]interface{} {
@@ -271,7 +289,7 @@ func cleanConfig(channel, trigger string, config map[string]interface{}) map[str
 
 func resourceNotificationCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 
-	trigger, filters := parseRule(d)
+	trigger, filters, status := parseRule(d)
 	channel := d.Get("channel").(string)
 	project_api_key := d.Get("project_api_key").(string)
 	config := parseSet("config", d)
@@ -281,14 +299,15 @@ func resourceNotificationCreate(ctx context.Context, d *schema.ResourceData, m i
 	l.Info().Msg("Creating rollbar_notification resource")
 
 	c := m.(map[string]*client.RollbarAPIClient)[projectKeyToken]
+<<<<<<< HEAD
 	if len(project_api_key) > 0 {
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
+=======
+	c.SetHeaderResource(rollbarNotification)
+>>>>>>> upstream/master
 
-	client.Mutex.Lock()
-	setResourceHeader(rollbarNotification, c)
-	n, err := c.CreateNotification(channel, filters, trigger, config)
-	client.Mutex.Unlock()
+	n, err := c.CreateNotification(channel, filters, trigger, config, status)
 
 	if err != nil {
 		l.Err(err).Send()
@@ -306,7 +325,7 @@ func resourceNotificationCreate(ctx context.Context, d *schema.ResourceData, m i
 func resourceNotificationUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 
 	id := mustGetID(d)
-	trigger, filters := parseRule(d)
+	trigger, filters, status := parseRule(d)
 	channel := d.Get("channel").(string)
 	project_api_key := d.Get("project_api_key").(string)
 	config := parseSet("config", d)
@@ -316,6 +335,7 @@ func resourceNotificationUpdate(ctx context.Context, d *schema.ResourceData, m i
 	l.Info().Msg("Creating rollbar_notification resource")
 
 	c := m.(map[string]*client.RollbarAPIClient)[projectKeyToken]
+<<<<<<< HEAD
 	if len(project_api_key) > 0 {
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
@@ -324,6 +344,10 @@ func resourceNotificationUpdate(ctx context.Context, d *schema.ResourceData, m i
 	setResourceHeader(rollbarNotification, c)
 	n, err := c.UpdateNotification(id, channel, filters, trigger, config)
 	client.Mutex.Unlock()
+=======
+	c.SetHeaderResource(rollbarNotification)
+	n, err := c.UpdateNotification(id, channel, filters, trigger, config, status)
+>>>>>>> upstream/master
 
 	if err != nil {
 		l.Err(err).Send()
@@ -351,7 +375,7 @@ func flattenConfig(config map[string]interface{}) *schema.Set {
 	return set
 }
 
-func flattenRule(filters []interface{}, trigger string) *schema.Set {
+func flattenRule(filters []interface{}, trigger, status string) *schema.Set {
 	var out = make([]interface{}, 0)
 	m := make(map[string]interface{})
 	for _, filter := range filters {
@@ -374,6 +398,12 @@ func flattenRule(filters []interface{}, trigger string) *schema.Set {
 			filterConv["value"] = strconv.FormatFloat(v, 'f', -1, 64)
 		}
 	}
+	if status == enabledStatus {
+		m["enabled"] = true
+	}
+	if status == disabledStatus {
+		m["enabled"] = false
+	}
 	m["filters"] = filters
 	out = append(out, m)
 	m["trigger"] = trigger
@@ -393,14 +423,17 @@ func resourceNotificationRead(ctx context.Context, d *schema.ResourceData, m int
 	l.Info().Msg("Reading rollbar_notification resource")
 
 	c := m.(map[string]*client.RollbarAPIClient)[projectKeyToken]
+<<<<<<< HEAD
 	if len(project_api_key) > 0 {
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
 
 	client.Mutex.Lock()
 	setResourceHeader(rollbarNotification, c)
+=======
+	c.SetHeaderResource(rollbarNotification)
+>>>>>>> upstream/master
 	n, err := c.ReadNotification(id, channel)
-	client.Mutex.Unlock()
 
 	if err == client.ErrNotFound {
 		d.SetId("")
@@ -413,7 +446,7 @@ func resourceNotificationRead(ctx context.Context, d *schema.ResourceData, m int
 	}
 
 	mustSet(d, "config", flattenConfig(n.Config))
-	mustSet(d, "rule", flattenRule(n.Filters, n.Trigger))
+	mustSet(d, "rule", flattenRule(n.Filters, n.Trigger, n.Status))
 	l.Debug().Msg("Successfully read rollbar_notification resource")
 	return nil
 }
@@ -430,10 +463,8 @@ func resourceNotificationDelete(ctx context.Context, d *schema.ResourceData, m i
 		c = client.NewClient(c.BaseURL, project_api_key)
 	}
 
-	client.Mutex.Lock()
-	setResourceHeader(rollbarNotification, c)
+	c.SetHeaderResource(rollbarNotification)
 	err := c.DeleteNotification(id, channel)
-	client.Mutex.Unlock()
 
 	if err != nil {
 		l.Err(err).Msg("Error deleting rollbar_notification resource")

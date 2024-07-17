@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-package rollbar
+package test2
 
 import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
