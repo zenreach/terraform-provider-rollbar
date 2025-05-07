@@ -24,6 +24,8 @@ package rollbar
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -33,6 +35,12 @@ import (
 	"github.com/rollbar/terraform-provider-rollbar/client"
 	"github.com/rs/zerolog/log"
 )
+
+func getMD5Hash(text string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
 
 func resourceProjectAccessToken() *schema.Resource {
 	return &schema.Resource{
@@ -61,13 +69,20 @@ func resourceProjectAccessToken() *schema.Resource {
 			},
 			"scopes": {
 				Description: `List of access scopes granted to the token.  Possible values are "read", "write", "post_server_item", and "post_client_server".`,
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Required:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				ForceNew:    true, // FIXME: https://github.com/rollbar/terraform-provider-rollbar/issues/41
 			},
 
 			// Optional fields
+			"token_type": {
+				Description: "Access token type for Rollbar API",
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Default:     "legacy",
+			},
 			"status": {
 				Description: `Status of the token.  Possible values are "enabled" and "disabled"`,
 				Type:        schema.TypeString,
@@ -94,6 +109,12 @@ func resourceProjectAccessToken() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Sensitive:   true,
+			},
+			"public_id": {
+				Description: "Public ID for Rollbar API",
+				Type:        schema.TypeString,
+				Computed:    true,
+				Sensitive:   false,
 			},
 			"date_created": {
 				Description: "Date the project was created",
@@ -122,15 +143,16 @@ func resourceProjectAccessToken() *schema.Resource {
 func resourceProjectAccessTokenCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	projectID := d.Get("project_id").(int)
 	name := d.Get("name").(string)
-	scopesInterface := d.Get("scopes").([]interface{})
+	scopesInterface := d.Get("scopes").(*schema.Set)
 	scopes := []client.Scope{}
-	for _, v := range scopesInterface {
+	for _, v := range scopesInterface.List() {
 		s := v.(string)
 		scopes = append(scopes, client.Scope(s))
 	}
 	status := client.Status(d.Get("status").(string))
 	size := d.Get("rate_limit_window_size").(int)
 	count := d.Get("rate_limit_window_count").(int)
+	tokenType := d.Get("token_type").(string)
 	l := log.With().
 		Int("project_id", projectID).
 		Str("name", name).
@@ -148,6 +170,7 @@ func resourceProjectAccessTokenCreate(ctx context.Context, d *schema.ResourceDat
 		ProjectID:            projectID,
 		Scopes:               scopes,
 		Status:               status,
+		TokenType:            tokenType,
 		RateLimitWindowSize:  size,
 		RateLimitWindowCount: count,
 	})
@@ -156,25 +179,33 @@ func resourceProjectAccessTokenCreate(ctx context.Context, d *schema.ResourceDat
 		return diag.FromErr(err)
 	}
 
-	d.SetId(pat.AccessToken)
-
+	d.SetId(getMD5Hash(pat.AccessToken))
+	mustSet(d, "access_token", pat.AccessToken)
+	mustSet(d, "public_id", pat.PublicID)
 	return resourceProjectAccessTokenRead(ctx, d, m)
 }
 
 func resourceProjectAccessTokenRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	accessToken := d.Id()
+	accessToken := d.Get("access_token").(string)
+	publicID := d.Get("public_id").(string)
+
+	tokenIdentifier := publicID
+	if tokenIdentifier == "" {
+		tokenIdentifier = accessToken
+	}
+
 	projectID := d.Get("project_id").(int)
 	l := log.With().
-		Str("accessToken", accessToken).
+		Str("tokenIdentifier", tokenIdentifier).
 		Logger()
 	l.Debug().Msg("Reading resource project access token")
 
 	c := m.(map[string]*client.RollbarAPIClient)[schemaKeyToken]
 	c.SetHeaderResource(rollbarProjectAccessToken)
 
-	pat, err := c.ReadProjectAccessToken(projectID, accessToken)
+	pat, err := c.ReadProjectAccessToken(projectID, tokenIdentifier)
 
 	if err == client.ErrNotFound {
 		d.SetId("")
@@ -188,6 +219,9 @@ func resourceProjectAccessTokenRead(ctx context.Context, d *schema.ResourceData,
 	var mPat map[string]interface{}
 	mustDecodeMapStructure(pat, &mPat)
 	for k, v := range mPat {
+		if k == "access_token" && v == "" { // show access_token in terraform state file
+			continue
+		}
 		mustSet(d, k, v)
 	}
 
@@ -195,13 +229,19 @@ func resourceProjectAccessTokenRead(ctx context.Context, d *schema.ResourceData,
 }
 
 func resourceProjectAccessTokenUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	accessToken := d.Id()
+	accessToken := d.Get("access_token").(string)
+	publicID := d.Get("public_id").(string)
+
+	tokenIdentifier := publicID
+	if tokenIdentifier == "" {
+		tokenIdentifier = accessToken
+	}
 	projectID := d.Get("project_id").(int)
 	size := d.Get("rate_limit_window_size").(int)
 	count := d.Get("rate_limit_window_count").(int)
 	args := client.ProjectAccessTokenUpdateArgs{
 		ProjectID:            projectID,
-		AccessToken:          accessToken,
+		AccessToken:          tokenIdentifier,
 		RateLimitWindowSize:  size,
 		RateLimitWindowCount: count,
 	}
@@ -220,18 +260,23 @@ func resourceProjectAccessTokenUpdate(ctx context.Context, d *schema.ResourceDat
 }
 
 func resourceProjectAccessTokenDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	accessToken := d.Id()
+	accessToken := d.Get("access_token").(string)
 	projectID := d.Get("project_id").(int)
+	publicID := d.Get("public_id").(string)
 
+	tokenIdentifier := publicID
+	if tokenIdentifier == "" {
+		tokenIdentifier = accessToken
+	}
 	l := log.With().
 		Int("projectID", projectID).
-		Str("accessToken", accessToken).
+		Str("tokenIdentifier", tokenIdentifier).
 		Logger()
 	l.Debug().Msg("Deleting resource project access token")
 
 	c := m.(map[string]*client.RollbarAPIClient)[schemaKeyToken]
 	c.SetHeaderResource(rollbarProjectAccessToken)
-	err := c.DeleteProjectAccessToken(projectID, accessToken)
+	err := c.DeleteProjectAccessToken(projectID, tokenIdentifier)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -258,6 +303,7 @@ func resourceProjectAccessTokenImporter(_ context.Context, d *schema.ResourceDat
 		Str("access_token", accessToken).
 		Send()
 	mustSet(d, "project_id", projectID)
-	d.SetId(accessToken)
+	mustSet(d, "access_token", accessToken)
+	d.SetId(getMD5Hash(accessToken))
 	return []*schema.ResourceData{d}, nil
 }

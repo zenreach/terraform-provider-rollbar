@@ -5,7 +5,7 @@ HOSTNAME=github.com
 NAMESPACE=zenreach
 NAME=rollbar
 BINARY=terraform-provider-${NAME}
-VERSION=1.15.1
+VERSION=1.16.0
 #VERSION=$$(npm run get-version | tail -1)
 OS_ARCH=linux_amd64
 
